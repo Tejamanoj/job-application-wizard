@@ -1162,8 +1162,29 @@ function jumpToStep(s) {
 
 function handleReset() {
   if (confirm('Start a fresh application? All progress will be lost.')) {
-    localStorage.removeItem(STORAGE_KEY);
-    location.reload();
+    try { sessionStorage.removeItem(STORAGE_KEY); } catch(e) {}
+    try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+    formState = defaultState();
+    hydrateStep1();
+    renderExperienceEntries();
+    renderSkillsStep();
+    renderSidebar();
+    renderUI();
+    
+    const welcomeModal = document.getElementById('welcome-modal');
+    if (welcomeModal) {
+      welcomeModal.classList.remove('hidden');
+      lockBodyScroll();
+    }
+    
+    // Clear file upload status indicator if present
+    const uploadedFilename = document.getElementById('uploaded-filename');
+    if (uploadedFilename) {
+      uploadedFilename.textContent = '';
+      uploadedFilename.classList.add('hidden');
+    }
+
+    showAutosaveToast('Application reset cleanly!');
   }
 }
 
@@ -1280,7 +1301,8 @@ function handleModalClose() {
   content.classList.add('scale-95', 'opacity-0');
   setTimeout(() => {
     modal.classList.add('hidden');
-    localStorage.removeItem(STORAGE_KEY);
+    try { sessionStorage.removeItem(STORAGE_KEY); } catch(e) {}
+    try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
     location.reload();
   }, 300);
 }
