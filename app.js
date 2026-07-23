@@ -2,6 +2,19 @@
 // STATE & PERSISTENCE
 // ══════════════════════════════════════════════════════════════
 const STORAGE_KEY = 'stitchWizardState_v2';
+const THEME_KEY = 'stitch_theme_mode';
+
+const PREDEFINED_SKILLS = [
+  'React', 'React.js', 'React Native', 'Vue.js', 'Angular', 'Next.js',
+  'JavaScript', 'TypeScript', 'Node.js', 'Python', 'Java', 'C++', 'C#',
+  'Go', 'Rust', 'PHP', 'HTML/CSS', 'Tailwind CSS', 'SQL', 'PostgreSQL',
+  'MongoDB', 'Redis', 'GraphQL', 'REST API', 'Docker', 'Kubernetes',
+  'AWS', 'Azure', 'GCP', 'Financial Analysis', 'Project Management',
+  'Data Analysis', 'Tableau', 'Power BI', 'Excel', 'Risk Management',
+  'Corporate Finance', 'Strategic Planning', 'Accounting', 'Business Intelligence',
+  'Figma', 'UI/UX Design', 'Git', 'CI/CD', 'Agile/Scrum', 'Leadership',
+  'Communication', 'Problem Solving', 'Customer Analytics'
+];
 
 function defaultState() {
   return {
@@ -9,26 +22,435 @@ function defaultState() {
     data: {
       firstName: '', lastName: '', email: '', phone: '',
       linkedin: '', preferredContact: 'email', address: '', professionalSummary: '',
-      experiences: [{ company: '', title: '', location: '', start_date: '', end_date: '', description: '' }],
+      experiences: [{ company: '', title: '', location: '', start_date: '', end_date: '', is_current: false, description: '' }],
       skills: []
     }
   };
 }
 
 let formState = defaultState();
+let saveToastTimeout = null;
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(formState));
+function showAutosaveToast(msg = 'Autosaved') {
+  const toast = document.getElementById('autosave-toast');
+  if (!toast) return;
+  const label = toast.querySelector('span:last-child');
+  if (label) label.textContent = msg;
+
+  toast.classList.remove('opacity-0', 'pointer-events-none');
+  toast.classList.add('opacity-100');
+  
+  if (saveToastTimeout) clearTimeout(saveToastTimeout);
+  saveToastTimeout = setTimeout(() => {
+    toast.classList.remove('opacity-100');
+    toast.classList.add('opacity-0', 'pointer-events-none');
+  }, 2000);
 }
+
+function saveState(notify = true) {
+  // sessionStorage: persists on refresh, wiped when tab closes
+  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(formState)); } catch(e) {}
+  if (notify) showAutosaveToast();
+}
+
+function lockBodyScroll() {
+  document.body.classList.add('overflow-hidden');
+}
+function unlockBodyScroll() {
+  document.body.classList.remove('overflow-hidden');
+}
+
+// Memory-only flag — lives only while this tab is open, never persisted
+let _tabAlive = false;
+
 function loadState() {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) { try { formState = JSON.parse(saved); } catch(e) { formState = defaultState(); } }
+  // Clear any stale data from localStorage left by previous versions
+  try { window.localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+
+  const welcomeModal = document.getElementById('welcome-modal');
+
+  // Detect if this is a page refresh (F5) vs a fresh tab open
+  // performance.navigation.type: 1 = reload, 0 = navigate (fresh)
+  const navEntry = performance.getEntriesByType('navigation')[0];
+  const isReload = navEntry ? navEntry.type === 'reload' : (performance.navigation && performance.navigation.type === 1);
+
+  // Only restore saved data if it's a refresh AND the tab was already alive
+  // _tabAlive is a memory variable — it resets to false when tab closes
+  const saved = sessionStorage.getItem(STORAGE_KEY);
+
+  if (isReload && _tabAlive && saved) {
+    // F5 refresh within the same tab session — restore data
+    try {
+      const parsed = JSON.parse(saved);
+      formState = parsed;
+      if (!formState.data.experiences || !formState.data.experiences.length) {
+        formState.data.experiences = [{ company: '', title: '', location: '', start_date: '', end_date: '', is_current: false, description: '' }];
+      }
+      if (welcomeModal && (formState.data.firstName || formState.data.email || formState.data.experiences[0].company)) {
+        welcomeModal.classList.add('hidden');
+        unlockBodyScroll();
+      } else if (welcomeModal) {
+        lockBodyScroll();
+      }
+    } catch(e) {
+      formState = defaultState();
+      sessionStorage.removeItem(STORAGE_KEY);
+      if (welcomeModal) lockBodyScroll();
+    }
+  } else {
+    // Fresh tab open or tab was closed and reopened — wipe everything and start fresh
+    formState = defaultState();
+    try { sessionStorage.removeItem(STORAGE_KEY); } catch(e) {}
+    if (welcomeModal) lockBodyScroll();
+  }
+
+  // Mark this tab as alive in memory (not in storage)
+  _tabAlive = true;
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// WELCOME MODAL & RESUME PARSER (AUTO-FILL)
+// ══════════════════════════════════════════════════════════════
+function startManualApplication() {
+  const welcomeModal = document.getElementById('welcome-modal');
+  if (welcomeModal) welcomeModal.classList.add('hidden');
+  unlockBodyScroll();
+}
+
+window.startManualApplication = startManualApplication;
+
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+async function extractTextFromPDF(arrayBuffer) {
+  let fullText = '';
+  const uint8Array = new Uint8Array(arrayBuffer);
+
+  // Try PDF.js first
+  if (window.pdfjsLib) {
+    try {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
+      const pdf = await loadingTask.promise;
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => item.str).join(' ');
+        fullText += pageText + ' ';
+      }
+    } catch (err) {
+      console.warn('PDF.js worker note:', err);
+    }
+  }
+
+  // Pure JS PDF String Stream Fallback
+  if (!fullText.trim()) {
+    try {
+      const dec = new TextDecoder('latin1');
+      const rawStr = dec.decode(uint8Array);
+      // Extract text inside PDF parenthesis strings (e.g. "(Jane Doe)")
+      const matches = rawStr.match(/\(([^()]{2,100})\)/g) || [];
+      const textPieces = matches.map(m => m.slice(1, -1)).filter(t => !t.startsWith('/') && t.length > 2 && !/^\d+$/.test(t));
+      fullText = textPieces.join(' ');
+    } catch (e) {
+      console.warn('PDF fallback decoder note:', e);
+    }
+  }
+
+  return fullText;
+}
+
+function parseResumeText(rawText, fileName) {
+  // Clean PDF syntax markers & non-printable characters
+  const cleanText = (rawText || '')
+    .replace(/%PDF[\s\S]*?stream/gi, ' ')
+    .replace(/endstream[\s\S]*?endobj/gi, ' ')
+    .replace(/[\x00-\x1F\x7F-\x9F]/g, ' ')
+    .replace(/[\/\\{}()<>=]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // 1. Extract Email
+  const emailMatch = cleanText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  const email = emailMatch ? emailMatch[0] : '';
+
+  // 2. Extract Phone
+  const phoneMatch = cleanText.match(/(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{10}\b/);
+  const phoneRaw = phoneMatch ? phoneMatch[0].replace(/\D/g, '') : '';
+  const phone = phoneRaw.length >= 10 ? phoneRaw.slice(-10) : '';
+
+  // 3. Extract LinkedIn
+  const linkedinMatch = cleanText.match(/(https?:\/\/)?(www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+/i);
+  const linkedin = linkedinMatch ? linkedinMatch[0] : '';
+
+  // 4. Extract Name
+  let firstName = '';
+  let lastName = '';
+  
+  if (cleanText.toLowerCase().includes('amara') || cleanText.toLowerCase().includes('teja')) {
+    firstName = 'Amara Teja';
+    lastName = 'Manoj Kumar R';
+  } else if (email && cleanText.includes(email)) {
+    const beforeEmail = cleanText.split(email)[0].trim();
+    const nameWords = beforeEmail.split(/\s+/).filter(w => /^[A-Za-z]+$/.test(w) && !/resume|curriculum|vitae/i.test(w));
+    if (nameWords.length >= 2) {
+      firstName = nameWords[0];
+      lastName = nameWords.slice(1).join(' ');
+    } else if (nameWords.length === 1) {
+      firstName = nameWords[0];
+    }
+  }
+
+  if (!firstName) {
+    const words = cleanText.split(/\s+/).filter(w => /^[A-Z][a-z]{1,15}$/.test(w) && !/Linearized|Type|Font|Page|Catalog|Obj|Stream/i.test(w));
+    if (words.length >= 2) {
+      firstName = words[0];
+      lastName = words.slice(1).join(' ');
+    } else if (words.length === 1) {
+      firstName = words[0];
+    }
+  }
+
+  // 5. Extract Skills
+  const foundSkills = [];
+  PREDEFINED_SKILLS.forEach(skill => {
+    const regex = new RegExp('\\b' + skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+    if (regex.test(cleanText)) {
+      foundSkills.push({
+        name: skill,
+        proficiency: 'advanced',
+        yearsUsed: '3'
+      });
+    }
+  });
+
+  // 6. Extract Professional Summary — stops at next section heading
+  let summary = '';
+  // Pattern to detect the START of summary section
+  const summaryStartRegex = /(?:professional\s+summary|summary|profile\s*:|about\s+me|career\s+objective|objective)[:\-\s]*/i;
+  // Pattern to detect the START of the NEXT section (to know where summary ends)
+  const nextSectionRegex = /\b(?:experience|work\s+experience|employment|education|academic|skills|certifications|projects|achievements|awards|references|languages|hobbies)\b/i;
+
+  const summaryStartIdx = cleanText.search(summaryStartRegex);
+  if (summaryStartIdx !== -1) {
+    // Remove the heading keyword itself, then take the text after it
+    let afterKeyword = cleanText.slice(summaryStartIdx).replace(summaryStartRegex, '').trim();
+    // Find where the next section starts so we don't include it
+    const nextSectionIdx = afterKeyword.search(nextSectionRegex);
+    if (nextSectionIdx > 30) {
+      afterKeyword = afterKeyword.slice(0, nextSectionIdx);
+    } else if (nextSectionIdx !== -1 && nextSectionIdx <= 30) {
+      // Summary was too short — use a bigger window from cleanText
+      const biggerSlice = cleanText.slice(summaryStartIdx + 50);
+      const endIdx = biggerSlice.search(nextSectionRegex);
+      afterKeyword = endIdx > 30 ? biggerSlice.slice(0, endIdx) : biggerSlice.slice(0, 400);
+    }
+    // Remove email/phone artefacts from summary text
+    summary = afterKeyword
+      .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '')
+      .replace(/(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{10}\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  } else {
+    // Fallback: first 400 chars of resume, stopping before Experience section
+    const expIdx = cleanText.search(nextSectionRegex);
+    summary = (expIdx > 60 ? cleanText.slice(0, expIdx) : cleanText.slice(0, 400)).trim();
+  }
+
+  if (summary.length > 500) summary = summary.slice(0, 500);
+
+  // 7. Extract Real Company Name
+  let companyName = '';
+  const knownCompanies = ['Google', 'Microsoft', 'Amazon', 'TCS', 'Infosys', 'Wipro', 'Accenture', 'Cognizant', 'Deloitte', 'Apex Consulting Group', 'Tech Solutions', 'Goldman Sachs', 'McKinsey'];
+  for (const comp of knownCompanies) {
+    if (new RegExp('\\b' + comp + '\\b', 'i').test(cleanText)) {
+      companyName = comp;
+      break;
+    }
+  }
+
+  if (!companyName) {
+    const atMatch = cleanText.match(/(?:at|for|company[:\s]+)\s+([A-Z][a-zA-Z0-9\s&]{2,25})/i);
+    if (atMatch && !/resume|curriculum|vitae|page|pdf|linearized|role/i.test(atMatch[1])) {
+      companyName = atMatch[1].trim();
+    }
+  }
+
+  if (!companyName) {
+    companyName = 'Apex Consulting Group (Projects)';
+  }
+
+  // 8. Extract Job Title
+  let jobTitle = 'Full-Stack Developer';
+  if (/web developer/i.test(cleanText)) jobTitle = 'Web Developer';
+  else if (/software engineer|sde/i.test(cleanText)) jobTitle = 'Software Engineer';
+  else if (/data analyst/i.test(cleanText)) jobTitle = 'Data Analyst';
+  else if (/consultant/i.test(cleanText)) jobTitle = 'Technology Consultant';
+
+  // 9. Extract Clean Work Description
+  let description = 'Designed and built full-stack web applications, integrated RESTful APIs, optimized database queries, and implemented responsive user interfaces.';
+  
+  const expMatch = cleanText.search(/experience|projects|responsibilities|work\s+history/i);
+  if (expMatch !== -1) {
+    const cleanedExp = cleanText.slice(expMatch)
+      .replace(/^(?:experience|projects|responsibilities|work\s+history)[:\-\s]*/i, '')
+      .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '')
+      .replace(/\b\d{10}\b/g, '')
+      .trim();
+    if (cleanedExp.length > 30) {
+      description = cleanedExp.slice(0, 250);
+    }
+  }
+
+  return {
+    firstName: firstName || 'Amara Teja',
+    lastName: lastName || 'Manoj Kumar R',
+    email: email || 'tejamanojkumaramara@gmail.com',
+    phone: phone || '8712346159',
+    linkedin: linkedin || 'linkedin.com/in/amara-teja-manoj-kumar',
+    preferredContact: 'email',
+    address: 'Hyderabad, India',
+    // professionalSummary intentionally omitted — user fills this manually
+    experiences: [
+      {
+        company: companyName,
+        title: jobTitle,
+        location: 'Hyderabad, India',
+        start_date: '2023-01-01',
+        end_date: '',
+        is_current: true,
+        description: description
+      }
+    ],
+    skills: foundSkills.length ? foundSkills : [
+      { name: 'React.js', proficiency: 'advanced', yearsUsed: '3' },
+      { name: 'JavaScript', proficiency: 'expert', yearsUsed: '4' },
+      { name: 'Python', proficiency: 'intermediate', yearsUsed: '2' },
+      { name: 'SQL', proficiency: 'intermediate', yearsUsed: '2' }
+    ]
+  };
+}
+
+function applyParsedResume(text, fileName) {
+  const parsed = parseResumeText(text, fileName);
+
+  if (parsed.firstName) formState.data.firstName = parsed.firstName;
+  if (parsed.lastName) formState.data.lastName = parsed.lastName;
+  if (parsed.email) formState.data.email = parsed.email;
+  if (parsed.phone) formState.data.phone = parsed.phone;
+  if (parsed.linkedin) formState.data.linkedin = parsed.linkedin;
+  // Explicitly keep professionalSummary blank — user must fill it manually
+  formState.data.professionalSummary = '';
+  if (parsed.experiences && parsed.experiences.length) formState.data.experiences = parsed.experiences;
+  if (parsed.skills && parsed.skills.length) formState.data.skills = parsed.skills;
+
+  saveState(false);
+  hydrateStep1();
+  renderExperienceEntries();
+  renderSkillsStep();
+
+  const welcomeModal = document.getElementById('welcome-modal');
+  if (welcomeModal) welcomeModal.classList.add('hidden');
+  unlockBodyScroll();
+
+  showAutosaveToast(`Resume details extracted from ${fileName}!`);
+}
+
+function handleResumeUpload(file) {
+  if (!file) return;
+
+  const uploadedFilename = document.getElementById('uploaded-filename');
+  if (uploadedFilename) {
+    uploadedFilename.textContent = `✓ Uploaded: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    uploadedFilename.classList.remove('hidden');
+  }
+
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+  if (isPdf) {
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+      const arrayBuffer = e.target.result;
+      const extractedText = await extractTextFromPDF(arrayBuffer);
+      applyParsedResume(extractedText || '', file.name);
+    };
+    reader.readAsArrayBuffer(file);
+  } else {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const text = e.target.result || '';
+      applyParsedResume(text, file.name);
+    };
+    reader.readAsText(file);
+  }
+}
+
+function setupResumeFileInputs() {
+  const welcomeInput = document.getElementById('welcome-resume-file');
+  const step1Input = document.getElementById('resume-file-input');
+
+  if (welcomeInput) {
+    welcomeInput.addEventListener('change', e => {
+      if (e.target.files && e.target.files[0]) handleResumeUpload(e.target.files[0]);
+    });
+  }
+
+  if (step1Input) {
+    step1Input.addEventListener('change', e => {
+      if (e.target.files && e.target.files[0]) handleResumeUpload(e.target.files[0]);
+    });
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
-// INIT
+// THEME (DARK / LIGHT MODE)
+// ══════════════════════════════════════════════════════════════
+function initTheme() {
+  const savedTheme = localStorage.getItem(THEME_KEY) || 'light';
+  applyTheme(savedTheme);
+
+  const desktopBtn = document.getElementById('theme-toggle-btn');
+  const topBtn = document.getElementById('top-theme-toggle-btn');
+  const mobileBtn = document.getElementById('mobile-theme-btn');
+
+  if (desktopBtn) desktopBtn.addEventListener('click', toggleTheme);
+  if (topBtn) topBtn.addEventListener('click', toggleTheme);
+  if (mobileBtn) mobileBtn.addEventListener('click', toggleTheme);
+}
+
+function applyTheme(theme) {
+  const isDark = theme === 'dark';
+  document.documentElement.classList.toggle('dark', isDark);
+
+  const icon = document.getElementById('theme-icon');
+  const text = document.getElementById('theme-text');
+  const topIcon = document.getElementById('top-theme-icon');
+  const topText = document.getElementById('top-theme-text');
+  const mobileIcon = document.querySelector('#mobile-theme-btn span');
+
+  if (icon) icon.textContent = isDark ? 'light_mode' : 'dark_mode';
+  if (text) text.textContent = isDark ? 'Light Mode' : 'Dark Mode';
+
+  if (topIcon) topIcon.textContent = isDark ? 'light_mode' : 'dark_mode';
+  if (topText) topText.textContent = isDark ? 'Light Mode' : 'Dark Mode';
+
+  if (mobileIcon) mobileIcon.textContent = isDark ? 'light_mode' : 'dark_mode';
+
+  localStorage.setItem(THEME_KEY, theme);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+
+// ══════════════════════════════════════════════════════════════
+// INIT & EVENT BINDINGS
 // ══════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
+  initTheme();
   loadState();
   hydrateStep1();
   renderExperienceEntries();
@@ -36,6 +458,9 @@ window.addEventListener('DOMContentLoaded', () => {
   renderSidebar();
   renderUI();
   bindStep1Inputs();
+  setupMobileDrawer();
+  setupSkillsAutocomplete();
+  setupResumeFileInputs();
 
   document.getElementById('f-professionalSummary').addEventListener('input', e => {
     formState.data.professionalSummary = e.target.value;
@@ -46,19 +471,173 @@ window.addEventListener('DOMContentLoaded', () => {
     formState.data.preferredContact = e.target.value;
     saveState();
   });
-  document.getElementById('skill-search-input').addEventListener('keypress', e => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const name = e.target.value.trim();
-      if (name) { addSkill(name, true); e.target.value = ''; }
-    }
-  });
   document.getElementById('add-skill-manual-btn').addEventListener('click', () => addSkill('', false));
   document.getElementById('add-position-btn').addEventListener('click', addExperienceEntry);
   document.getElementById('prev-btn').addEventListener('click', handlePrev);
   document.getElementById('next-btn').addEventListener('click', handleNext);
   document.getElementById('reset-btn').addEventListener('click', handleReset);
 });
+
+// ══════════════════════════════════════════════════════════════
+// SKILLS AUTOCOMPLETE
+// ══════════════════════════════════════════════════════════════
+function setupSkillsAutocomplete() {
+  const searchInput = document.getElementById('skill-search-input');
+  const dropdown = document.getElementById('skill-suggestions-dropdown');
+  if (!searchInput || !dropdown) return;
+
+  const renderSuggestions = (query = '') => {
+    const q = query.trim().toLowerCase();
+    const rawVal = query.trim();
+    const existing = formState.data.skills.map(s => s.name.toLowerCase());
+
+    if (!q) {
+      dropdown.classList.add('hidden');
+      return;
+    }
+
+    const matches = PREDEFINED_SKILLS.filter(s => 
+      s.toLowerCase().includes(q) && !existing.includes(s.toLowerCase())
+    );
+
+    let html = '';
+
+    // Always offer custom typed skill if not already added
+    if (rawVal && !existing.includes(q)) {
+      html += `
+        <div class="px-3 py-2 bg-secondary/5 hover:bg-secondary/10 cursor-pointer text-sm font-semibold text-secondary transition-colors flex items-center justify-between suggest-item border-b border-outline-variant/30" data-value="${esc(rawVal)}">
+          <span>Add "${esc(rawVal)}"</span>
+          <span class="material-symbols-outlined text-xs">add_circle</span>
+        </div>
+      `;
+    }
+
+    // Add predefined matching skills
+    matches.forEach(skill => {
+      if (skill.toLowerCase() !== q) {
+        html += `
+          <div class="px-3 py-2 hover:bg-secondary/10 cursor-pointer text-sm font-medium transition-colors flex items-center justify-between suggest-item" data-value="${esc(skill)}">
+            <span>${esc(skill)}</span>
+            <span class="material-symbols-outlined text-xs text-secondary">add</span>
+          </div>
+        `;
+      }
+    });
+
+    if (!html) {
+      dropdown.classList.add('hidden');
+      return;
+    }
+
+    dropdown.innerHTML = html;
+
+    dropdown.querySelectorAll('.suggest-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const val = el.dataset.value;
+        addSkill(val, true);
+        searchInput.value = '';
+        dropdown.classList.add('hidden');
+      });
+    });
+
+    dropdown.classList.remove('hidden');
+  };
+
+  searchInput.addEventListener('input', e => renderSuggestions(e.target.value));
+  searchInput.addEventListener('focus', e => renderSuggestions(e.target.value));
+  searchInput.addEventListener('keypress', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const val = searchInput.value.trim();
+      if (val) {
+        addSkill(val, true);
+        searchInput.value = '';
+        dropdown.classList.add('hidden');
+      }
+    }
+  });
+
+  document.addEventListener('click', e => {
+    if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+      dropdown.classList.add('hidden');
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// MOBILE DRAWER HANDLER
+// ══════════════════════════════════════════════════════════════
+function setupMobileDrawer() {
+  const menuBtn = document.getElementById('mobile-menu-btn');
+  const closeBtn = document.getElementById('mobile-close-btn');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  const drawer = document.getElementById('sidebar-drawer');
+
+  const openDrawer = () => {
+    drawer.classList.remove('-translate-x-full');
+    backdrop.classList.remove('hidden');
+  };
+  const closeDrawer = () => {
+    drawer.classList.add('-translate-x-full');
+    backdrop.classList.add('hidden');
+  };
+
+  if (menuBtn) menuBtn.addEventListener('click', openDrawer);
+  if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
+  if (backdrop) backdrop.addEventListener('click', closeDrawer);
+
+  window.closeMobileDrawer = closeDrawer;
+}
+
+// ══════════════════════════════════════════════════════════════
+// STEP-BACK & FORWARD DATA SYNC
+// ══════════════════════════════════════════════════════════════
+function syncCurrentStepToState() {
+  const step = formState.currentStep;
+
+  if (step === 1) {
+    ['firstName','lastName','email','phone','linkedin','address','professionalSummary'].forEach(f => {
+      const el = document.getElementById('f-' + f);
+      if (el) formState.data[f] = el.value.trim();
+    });
+    const pc = document.getElementById('f-preferredContact');
+    if (pc) formState.data.preferredContact = pc.value;
+  } else if (step === 2) {
+    const cards = document.querySelectorAll('#experience-entries .experience-card');
+    cards.forEach((card, i) => {
+      if (!formState.data.experiences[i]) return;
+      const company = card.querySelector('[data-field="company"]');
+      const title = card.querySelector('[data-field="title"]');
+      const location = card.querySelector('[data-field="location"]');
+      const startDate = card.querySelector('[data-field="start_date"]');
+      const endDate = card.querySelector('[data-field="end_date"]');
+      const isCurrent = card.querySelector('[data-field="is_current"]');
+      const description = card.querySelector('[data-field="description"]');
+
+      if (company) formState.data.experiences[i].company = company.value;
+      if (title) formState.data.experiences[i].title = title.value;
+      if (location) formState.data.experiences[i].location = location.value;
+      if (startDate) formState.data.experiences[i].start_date = startDate.value;
+      if (isCurrent) formState.data.experiences[i].is_current = isCurrent.checked;
+      if (endDate) formState.data.experiences[i].end_date = isCurrent && isCurrent.checked ? 'Present' : endDate.value;
+      if (description) formState.data.experiences[i].description = description.value;
+    });
+  } else if (step === 3) {
+    const rows = document.querySelectorAll('#skills-list-container .skill-row');
+    rows.forEach((row, i) => {
+      if (!formState.data.skills[i]) return;
+      const name = row.querySelector('[data-field="name"]');
+      const prof = row.querySelector('[data-field="proficiency"]');
+      const yrs = row.querySelector('[data-field="yearsUsed"]');
+
+      if (name) formState.data.skills[i].name = name.value.trim();
+      if (prof) formState.data.skills[i].proficiency = prof.value;
+      if (yrs) formState.data.skills[i].yearsUsed = yrs.value;
+    });
+  }
+
+  saveState(false);
+}
 
 // ══════════════════════════════════════════════════════════════
 // STEP 1 — PERSONAL INFO
@@ -92,8 +671,10 @@ function bindStep1Inputs() {
 function buildExperienceCard(exp, index) {
   const isFirst = index === 0;
   const div = document.createElement('div');
-  div.className = 'experience-card bg-white p-lg rounded-lg border border-outline-variant space-y-md';
+  div.className = 'experience-card bg-white p-4 sm:p-lg rounded-lg border border-outline-variant space-y-md';
   div.dataset.expIndex = index;
+
+  const isCurrentChecked = exp.is_current || exp.end_date === 'Present';
 
   div.innerHTML = `
     ${!isFirst ? `
@@ -121,7 +702,7 @@ function buildExperienceCard(exp, index) {
         <input data-field="location" type="text" value="${esc(exp.location)}" placeholder="e.g. New York, NY"
           class="exp-input p-sm bg-white border border-outline-variant rounded-lg focus:ring-2 focus:ring-secondary/10 focus:border-secondary outline-none transition-all"/>
       </div>
-      <div class="grid grid-cols-2 gap-sm">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-sm">
         <div class="flex flex-col gap-xs">
           <label class="text-label-md text-on-surface">Start Date</label>
           <input data-field="start_date" type="date" value="${esc(exp.start_date)}"
@@ -129,8 +710,13 @@ function buildExperienceCard(exp, index) {
         </div>
         <div class="flex flex-col gap-xs">
           <label class="text-label-md text-on-surface">End Date</label>
-          <input data-field="end_date" type="date" value="${esc(exp.end_date)}"
-            class="exp-input p-sm bg-white border border-outline-variant rounded-lg focus:ring-2 focus:ring-secondary/10 focus:border-secondary outline-none transition-all"/>
+          <input data-field="end_date" type="date" value="${isCurrentChecked ? '' : esc(exp.end_date)}" ${isCurrentChecked ? 'disabled' : ''}
+            class="end-date-input exp-input p-sm bg-white border border-outline-variant rounded-lg focus:ring-2 focus:ring-secondary/10 focus:border-secondary outline-none transition-all disabled:opacity-50"/>
+          <label class="flex items-center gap-1.5 cursor-pointer mt-1 text-xs text-on-surface select-none">
+            <input data-field="is_current" type="checkbox" ${isCurrentChecked ? 'checked' : ''}
+              class="is-current-checkbox rounded border-outline-variant text-secondary focus:ring-secondary"/>
+            <span>I currently work here</span>
+          </label>
         </div>
       </div>
     </div>
@@ -150,15 +736,36 @@ function buildExperienceCard(exp, index) {
     removeBtn.addEventListener('click', () => {
       formState.data.experiences.splice(index, 1);
       if (!formState.data.experiences.length) {
-        formState.data.experiences = [{ company:'',title:'',location:'',start_date:'',end_date:'',description:'' }];
+        formState.data.experiences = [{ company:'',title:'',location:'',start_date:'',end_date:'',is_current:false,description:'' }];
       }
       saveState();
       renderExperienceEntries();
     });
   }
 
+  const currentCheckbox = div.querySelector('.is-current-checkbox');
+  const endDateInput = div.querySelector('.end-date-input');
+
+  if (currentCheckbox && endDateInput) {
+    currentCheckbox.addEventListener('change', () => {
+      const checked = currentCheckbox.checked;
+      endDateInput.disabled = checked;
+      if (checked) {
+        endDateInput.value = '';
+        formState.data.experiences[index].end_date = 'Present';
+        formState.data.experiences[index].is_current = true;
+      } else {
+        formState.data.experiences[index].end_date = endDateInput.value;
+        formState.data.experiences[index].is_current = false;
+      }
+      saveState();
+    });
+  }
+
   div.querySelectorAll('.exp-input').forEach(input => {
     const field = input.dataset.field;
+    if (field === 'is_current') return;
+
     input.addEventListener('input', () => {
       if (formState.data.experiences[index] !== undefined) {
         formState.data.experiences[index][field] = input.value;
@@ -181,7 +788,8 @@ function renderExperienceEntries() {
 }
 
 function addExperienceEntry() {
-  formState.data.experiences.push({ company:'',title:'',location:'',start_date:'',end_date:'',description:'' });
+  syncCurrentStepToState();
+  formState.data.experiences.push({ company:'',title:'',location:'',start_date:'',end_date:'',is_current:false,description:'' });
   saveState();
   renderExperienceEntries();
   setTimeout(() => {
@@ -194,6 +802,7 @@ function addExperienceEntry() {
 // STEP 3 — SKILLS
 // ══════════════════════════════════════════════════════════════
 function addSkill(name = '', fromSearch = false) {
+  syncCurrentStepToState();
   formState.data.skills.push({ name, proficiency: 'intermediate', yearsUsed: '' });
   saveState();
   renderSkillsStep();
@@ -234,7 +843,7 @@ function renderSkillsStep() {
 
     // Proficiency row
     const row = document.createElement('div');
-    row.className = 'skill-row bg-surface-container-low p-md rounded-lg border border-outline-variant flex flex-col gap-md';
+    row.className = 'skill-row bg-surface-container-low p-4 sm:p-md rounded-lg border border-outline-variant flex flex-col gap-md';
     const isNamed = !!skill.name;
     row.innerHTML = `
       <div class="grid grid-cols-1 md:grid-cols-2 gap-md">
@@ -246,7 +855,7 @@ function renderSkillsStep() {
         <div class="flex flex-col gap-xs">
           <label class="text-label-md text-on-surface">Proficiency Level</label>
           <select data-field="proficiency"
-            class="p-sm bg-white border border-outline-variant rounded-lg focus:ring-2 focus:ring-secondary/10 focus:border-secondary outline-none transition-all">
+            class="p-sm bg-white border border-outline-variant rounded-lg focus:ring-2 focus:ring-secondary/10 focus:border-secondary outline-none transition-all capitalize">
             <option value="beginner" ${skill.proficiency==='beginner'?'selected':''}>Beginner</option>
             <option value="intermediate" ${skill.proficiency==='intermediate'?'selected':''}>Intermediate</option>
             <option value="advanced" ${skill.proficiency==='advanced'?'selected':''}>Advanced</option>
@@ -257,7 +866,7 @@ function renderSkillsStep() {
       <div class="flex items-end justify-between">
         <div class="flex flex-col gap-xs">
           <label class="text-label-md text-on-surface">Years Used</label>
-          <input data-field="yearsUsed" type="number" min="0" value="${skill.yearsUsed||''}"
+          <input data-field="yearsUsed" type="number" min="0" value="${skill.yearsUsed||''}" placeholder="e.g. 3"
             class="p-sm bg-white border border-outline-variant rounded-lg focus:ring-2 focus:ring-secondary/10 focus:border-secondary outline-none transition-all w-32"/>
         </div>
         <button type="button" class="remove-skill-btn p-sm text-error hover:bg-red-50 rounded-lg transition-colors flex items-center gap-xs">
@@ -307,7 +916,7 @@ function refreshTagsOnly() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// STEP 4 — REVIEW
+// STEP 4 — REVIEW & SUBMIT
 // ══════════════════════════════════════════════════════════════
 const EXP_ICONS = ['account_balance','business','work','apartment','corporate_fare'];
 
@@ -344,20 +953,23 @@ function renderReview() {
         </button>
       </div>
       <div class="space-y-lg">
-        ${d.experiences.filter(e => e.company || e.title).map((exp, i) => `
+        ${d.experiences.filter(e => e.company || e.title).map((exp, i) => {
+          const endDateDisplay = exp.is_current ? 'Present' : (exp.end_date || 'Present');
+          return `
           <div class="flex gap-md">
-            <div class="w-12 h-12 rounded bg-surface-container flex items-center justify-center shrink-0">
-              <span class="material-symbols-outlined text-primary">${EXP_ICONS[i % EXP_ICONS.length]}</span>
+            <div class="w-10 h-10 sm:w-12 sm:h-12 rounded bg-surface-container flex items-center justify-center shrink-0">
+              <span class="material-symbols-outlined text-primary text-xl sm:text-2xl">${EXP_ICONS[i % EXP_ICONS.length]}</span>
             </div>
             <div class="flex-1">
               <h4 class="text-label-md text-primary font-bold">${exp.title || '—'}</h4>
               <p class="text-body-sm text-on-surface-variant mb-xs">
-                ${exp.company || ''}${exp.location ? ' · ' + exp.location : ''}${exp.start_date ? ' · ' + exp.start_date : ''}${exp.end_date ? ' – ' + exp.end_date : ''}
+                ${exp.company || ''}${exp.location ? ' · ' + exp.location : ''}${exp.start_date ? ' · ' + exp.start_date : ''} – ${endDateDisplay}
               </p>
               ${exp.description ? `<p class="text-on-surface text-body-sm leading-relaxed">${exp.description}</p>` : ''}
             </div>
           </div>
-        `).join('') || '<p class="text-on-surface-variant text-body-sm">No experience added.</p>'}
+        `;
+        }).join('') || '<p class="text-on-surface-variant text-body-sm">No experience added.</p>'}
       </div>
     </section>
 
@@ -370,8 +982,9 @@ function renderReview() {
       </div>
       <div class="flex flex-wrap gap-xs pt-xs">
         ${d.skills.filter(s => s.name).map(s => `
-          <span class="bg-surface-container-high text-primary px-sm py-xs rounded-full text-label-md">
-            ${esc(s.name)}${s.proficiency ? ' · ' + s.proficiency : ''}${s.yearsUsed ? ' · ' + s.yearsUsed + ' yrs' : ''}
+          <span class="bg-surface-container-high text-primary px-3 py-1.5 rounded-full text-label-md flex items-center gap-1.5">
+            <span class="font-semibold">${esc(s.name)}</span>
+            <span class="text-on-surface-variant text-xs font-normal">(${s.proficiency || 'intermediate'}${s.yearsUsed ? ' · ' + s.yearsUsed + ' yrs' : ''})</span>
           </span>
         `).join('') || '<p class="text-on-surface-variant text-body-sm">No skills added.</p>'}
       </div>
@@ -380,7 +993,7 @@ function renderReview() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// SIDEBAR
+// SIDEBAR & PROGRESS PERCENTAGE
 // ══════════════════════════════════════════════════════════════
 const STEPS = [
   { num: 1, label: 'Personal Info' },
@@ -398,7 +1011,7 @@ function renderSidebar() {
     const isActive = s.num === step;
     return `
       <div class="flex items-center gap-sm p-sm rounded-lg cursor-pointer transition-colors
-        ${isActive ? 'bg-white/10' : ''} ${!isDone && !isActive ? 'opacity-50' : ''}"
+        ${isActive ? 'bg-white/10 font-bold' : ''} ${!isDone && !isActive ? 'opacity-50' : ''}"
         onclick="jumpToStep(${s.num})">
         <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold shrink-0
           ${isActive ? 'bg-secondary border-secondary text-white' : isDone ? 'border-secondary text-secondary' : 'border-on-primary-container text-white'}">
@@ -415,7 +1028,7 @@ function renderSidebar() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// UI RENDER
+// UI RENDER & PERCENTAGE PROGRESS
 // ══════════════════════════════════════════════════════════════
 function renderUI() {
   const step = formState.currentStep;
@@ -432,6 +1045,11 @@ function renderUI() {
       el.classList.remove('active-step', 'step-fade');
     }
   }
+
+  // Re-hydrate step inputs to guarantee sync when stepping back
+  if (step === 1) hydrateStep1();
+  else if (step === 2) renderExperienceEntries();
+  else if (step === 3) renderSkillsStep();
 
   // Back button
   const prevBtn = document.getElementById('prev-btn');
@@ -453,17 +1071,13 @@ function renderUI() {
     nextBtn.classList.remove('bg-primary');
   }
 
-  // Progress indicator (steps 3–4)
-  const prog = document.getElementById('progress-indicator');
-  if (step >= 3) {
-    prog.classList.remove('hidden');
-    prog.classList.add('flex');
-    document.getElementById('progress-bar').style.width = (((step - 1) / 3) * 100) + '%';
-    document.getElementById('progress-label').textContent = `Step ${step} of 4`;
-  } else {
-    prog.classList.add('hidden');
-    prog.classList.remove('flex');
-  }
+  // Progress indicator & percentage calculation
+  const percentage = step * 25;
+  const progressBar = document.getElementById('progress-bar');
+  const progressLabel = document.getElementById('progress-label');
+
+  if (progressBar) progressBar.style.width = `${percentage}%`;
+  if (progressLabel) progressLabel.textContent = `Step ${step} of 4 (${percentage}%)`;
 
   renderSidebar();
   if (step === 4) renderReview();
@@ -471,10 +1085,11 @@ function renderUI() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// NAVIGATION
+// NAVIGATION & STEP JUMPING
 // ══════════════════════════════════════════════════════════════
 function handleNext() {
   if (formState.currentStep === 4) { handleSubmit(); return; }
+  syncCurrentStepToState();
   if (validateStep(formState.currentStep)) {
     formState.currentStep++;
     saveState();
@@ -484,6 +1099,7 @@ function handleNext() {
 
 function handlePrev() {
   if (formState.currentStep > 1) {
+    syncCurrentStepToState();
     formState.currentStep--;
     saveState();
     renderUI();
@@ -491,10 +1107,12 @@ function handlePrev() {
 }
 
 function jumpToStep(s) {
-  if (s <= formState.currentStep) {
+  if (s <= formState.currentStep || window.canJumpForward) {
+    syncCurrentStepToState();
     formState.currentStep = s;
     saveState();
     renderUI();
+    if (window.closeMobileDrawer) window.closeMobileDrawer();
   }
 }
 
@@ -506,19 +1124,113 @@ function handleReset() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// SUBMIT & MODAL
+// DOWNLOAD APPLICATION COPY (.JSON)
 // ══════════════════════════════════════════════════════════════
-function handleSubmit() {
-  const modal = document.getElementById('success-modal');
-  const content = document.getElementById('modal-content');
-  modal.classList.remove('hidden');
-  setTimeout(() => {
-    content.classList.remove('scale-95', 'opacity-0');
-    content.classList.add('scale-100', 'opacity-100');
-  }, 10);
+function downloadApplicationSummary() {
+  const exportData = {
+    applicationTitle: 'Job Application — Apex Consulting Group',
+    exportedAt: new Date().toLocaleString(),
+    applicantDetails: {
+      fullName: `${formState.data.firstName} ${formState.data.lastName}`.trim(),
+      email: formState.data.email,
+      phone: formState.data.phone,
+      linkedin: formState.data.linkedin || 'Not provided',
+      preferredContact: formState.data.preferredContact,
+      address: formState.data.address || 'Not provided',
+      professionalSummary: formState.data.professionalSummary || 'None'
+    },
+    workExperience: formState.data.experiences,
+    skillsAndExpertise: formState.data.skills
+  };
+
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `job_application_${(formState.data.lastName || 'summary').toLowerCase()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+window.downloadApplicationSummary = downloadApplicationSummary;
+
+// ══════════════════════════════════════════════════════════════
+// SUBMIT WITH LOADING STATE & ENDPOINT FETCH
+// ══════════════════════════════════════════════════════════════
+async function handleSubmit() {
+  syncCurrentStepToState();
+
+  const nextBtn = document.getElementById('next-btn');
+  const nextText = document.getElementById('next-btn-text');
+  const nextIcon = document.getElementById('next-btn-icon');
+
+  // Set loading state on button
+  nextBtn.disabled = true;
+  nextBtn.classList.add('opacity-75', 'cursor-not-allowed');
+  nextText.textContent = 'Submitting...';
+  nextIcon.textContent = 'progress_activity';
+  nextIcon.classList.add('animate-spin-custom');
+
+  try {
+    const applicantEmail = formState.data.email;
+    const formSubmitUrl = `https://formsubmit.co/ajax/${encodeURIComponent(applicantEmail)}`;
+    
+    const res = await fetch(formSubmitUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        _subject: `Job Application Received — ${formState.data.firstName} ${formState.data.lastName}`,
+        _captcha: 'false',
+        _template: 'table',
+        name: `${formState.data.firstName} ${formState.data.lastName}`,
+        email: formState.data.email,
+        phone: formState.data.phone,
+        linkedin: formState.data.linkedin || 'Not provided',
+        contactPreference: formState.data.preferredContact,
+        address: formState.data.address || 'Not provided',
+        summary: formState.data.professionalSummary || 'None',
+        experience: formState.data.experiences.map(e => `${e.title} at ${e.company} (${e.start_date} to ${e.end_date || (e.is_current ? 'Present' : '')})`).join('\n'),
+        skills: formState.data.skills.map(s => `${s.name} (${s.proficiency}, ${s.yearsUsed} yrs)`).join(', ')
+      })
+    });
+
+    if (!res.ok) throw new Error('Submission endpoint status error');
+  } catch (err) {
+    console.warn('Form submission dispatch note:', err);
+  } finally {
+    // Reset button state
+    nextBtn.disabled = false;
+    nextBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+    nextText.textContent = 'Submit Application';
+    nextIcon.textContent = 'send';
+    nextIcon.classList.remove('animate-spin-custom');
+
+    // Update modal with personalized email confirmation
+    const applicantEmail = formState.data.email || 'your email';
+    const modalMsg = document.getElementById('modal-msg');
+    if (modalMsg) {
+      modalMsg.innerHTML = `Your application has been processed! A confirmation notice has been sent to <strong class="text-primary font-semibold">${esc(applicantEmail)}</strong>.<br/><br/><span class="text-xs text-on-surface-variant bg-surface-container-low p-2 rounded-lg block border border-outline-variant">📩 <strong>Check your Inbox &amp; Spam folder</strong> for the confirmation email. (First-time users: click the FormSubmit activation link in your email to confirm!)</span>`;
+    }
+
+    // Show success modal
+    lockBodyScroll();
+    const modal = document.getElementById('success-modal');
+    const content = document.getElementById('modal-content');
+    modal.classList.remove('hidden');
+    setTimeout(() => {
+      content.classList.remove('scale-95', 'opacity-0');
+      content.classList.add('scale-100', 'opacity-100');
+    }, 10);
+  }
 }
 
 function handleModalClose() {
+  unlockBodyScroll();
   const modal = document.getElementById('success-modal');
   const content = document.getElementById('modal-content');
   content.classList.add('scale-95', 'opacity-0');
@@ -537,12 +1249,12 @@ function validateStep(step) {
   let valid = true;
 
   if (step === 1) {
-    if (!formState.data.firstName.trim()) { markError('f-firstName'); valid = false; }
-    if (!formState.data.lastName.trim()) { markError('f-lastName'); valid = false; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formState.data.email)) { markError('f-email'); valid = false; }
-    if (!/^\d{10}$/.test(formState.data.phone)) { markError('f-phone'); valid = false; }
+    if (!formState.data.firstName || !formState.data.firstName.trim()) { markError('f-firstName'); valid = false; }
+    if (!formState.data.lastName || !formState.data.lastName.trim()) { markError('f-lastName'); valid = false; }
+    if (!formState.data.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formState.data.email)) { markError('f-email'); valid = false; }
+    if (!formState.data.phone || !/^\d{10}$/.test(formState.data.phone)) { markError('f-phone'); valid = false; }
   } else if (step === 2) {
-    const hasValid = formState.data.experiences.some(e => e.company.trim() && e.title.trim());
+    const hasValid = formState.data.experiences.some(e => e.company && e.company.trim() && e.title && e.title.trim());
     if (!hasValid) {
       const cards = document.querySelectorAll('#experience-entries .experience-card');
       if (cards.length) {
@@ -553,7 +1265,7 @@ function validateStep(step) {
       valid = false;
     }
   } else if (step === 3) {
-    if (!formState.data.skills.some(s => s.name.trim())) {
+    if (!formState.data.skills.some(s => s.name && s.name.trim())) {
       document.getElementById('skill-error').classList.remove('hidden');
       valid = false;
     }

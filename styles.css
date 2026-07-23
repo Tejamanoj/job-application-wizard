@@ -1,6 +1,5 @@
 /* ══════════════════════════════════════════════════════════════
-   Job Application Wizard — Custom Styles
-   (Tailwind CSS handles most styling via CDN classes)
+   Job Application Wizard — Custom Styles & Dark Mode
    ══════════════════════════════════════════════════════════════ */
 
 /* Material Symbols icon font rendering */
@@ -13,6 +12,7 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   font-family: 'Inter', sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Step visibility */
@@ -25,7 +25,7 @@ body {
 
 /* Experience card hover */
 .experience-card {
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 .experience-card:hover {
   border-color: #13696a;
@@ -49,4 +49,72 @@ body {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Spinner Animation */
+.animate-spin-custom {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Mobile Sidebar Drawer Smooth Transition */
+.sidebar-drawer {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DARK MODE OVERRIDES
+   ══════════════════════════════════════════════════════════════ */
+html.dark body {
+  background-color: #0b1320;
+  color: #e1e2e4;
+}
+html.dark .bg-surface-container-lowest {
+  background-color: #121c2d !important;
+  border-color: #24344d !important;
+  color: #e1e2e4 !important;
+}
+html.dark .bg-surface-container-low {
+  background-color: #18253a !important;
+  border-color: #24344d !important;
+}
+html.dark .bg-white {
+  background-color: #18253a !important;
+  color: #ffffff !important;
+  border-color: #24344d !important;
+}
+html.dark input, 
+html.dark textarea, 
+html.dark select {
+  background-color: #18253a !important;
+  color: #ffffff !important;
+  border-color: #24344d !important;
+}
+html.dark input:focus, 
+html.dark textarea:focus, 
+html.dark select:focus {
+  border-color: #13696a !important;
+}
+html.dark .text-primary {
+  color: #a4c2ff !important;
+}
+html.dark .text-on-surface {
+  color: #e1e2e4 !important;
+}
+html.dark .text-on-surface-variant {
+  color: #9da8b9 !important;
+}
+html.dark .border-outline-variant {
+  border-color: #24344d !important;
+}
+html.dark .bg-surface-container-high {
+  background-color: #1f304b !important;
+  color: #a4c2ff !important;
+}
+html.dark nav.sticky {
+  background-color: rgba(18, 28, 45, 0.95) !important;
+  border-color: #24344d !important;
 }

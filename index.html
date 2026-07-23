@@ -6,6 +6,7 @@
   <meta name="description" content="Apply to open positions at Apex Consulting Group through our secure, professional multi-step job application wizard."/>
   <title>Job Application Wizard | Apex Consulting Group</title>
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
   <script id="tailwind-config">
@@ -23,7 +24,7 @@
           },
           borderRadius: { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" },
           spacing: {
-            "container-padding": "40px", "sm": "16px", "xs": "8px",
+            "container-padding": "24px", "sm": "16px", "xs": "8px",
             "md": "24px", "lg": "32px", "xl": "48px", "base": "4px", "stack-gap": "12px"
           },
           fontSize: {
@@ -40,32 +41,104 @@
   </script>
   <link rel="stylesheet" href="styles.css"/>
 </head>
-<body class="bg-surface text-on-surface flex">
+<body class="bg-surface text-on-surface flex flex-col md:flex-row min-h-screen">
+
+<!-- ═══════════════════════ AUTOSAVE TOAST ═══════════════════════ -->
+<div id="autosave-toast" class="fixed top-4 right-36 bg-primary text-white text-xs font-medium px-3 py-2 rounded-lg shadow-lg opacity-0 pointer-events-none transition-all duration-300 flex items-center gap-1.5 z-50">
+  <span class="material-symbols-outlined text-secondary-container text-sm">cloud_done</span>
+  <span>Autosaved</span>
+</div>
+
+<!-- ═══════════════════════ TOP-RIGHT FLOATING THEME TOGGLE (DESKTOP) ═══════════════════════ -->
+<div class="hidden md:flex fixed top-4 right-6 z-40">
+  <button id="top-theme-toggle-btn" type="button" 
+    class="flex items-center gap-2 bg-surface-container-lowest border border-outline-variant text-on-surface px-3 py-1.5 rounded-full shadow-sm hover:border-secondary transition-all text-xs font-semibold cursor-pointer">
+    <span id="top-theme-icon" class="material-symbols-outlined text-base text-secondary">dark_mode</span>
+    <span id="top-theme-text">Dark Mode</span>
+  </button>
+</div>
+
+<!-- ═══════════════════════ MOBILE HEADER ═══════════════════════ -->
+<header class="md:hidden fixed top-0 left-0 right-0 h-14 bg-primary text-white flex items-center justify-between px-4 z-40 shadow-md">
+  <div class="flex items-center gap-2">
+    <span class="material-symbols-outlined text-secondary-container">description</span>
+    <span class="font-bold text-base">Application Wizard</span>
+  </div>
+  <div class="flex items-center gap-2">
+    <button id="mobile-theme-btn" type="button" class="flex items-center gap-1 bg-white/10 px-2.5 py-1 rounded-full text-xs font-medium hover:bg-white/20">
+      <span class="material-symbols-outlined text-base">dark_mode</span>
+    </button>
+    <button id="mobile-menu-btn" type="button" class="p-1 rounded text-white hover:bg-white/10 flex items-center justify-center">
+      <span class="material-symbols-outlined text-2xl">menu</span>
+    </button>
+  </div>
+</header>
+
+<!-- ═══════════════════════ MOBILE BACKDROP ═══════════════════════ -->
+<div id="sidebar-backdrop" class="fixed inset-0 bg-primary/60 backdrop-blur-sm z-40 hidden md:hidden"></div>
 
 <!-- ═══════════════════════ SIDEBAR ═══════════════════════ -->
-<aside class="fixed top-0 left-0 h-full w-[280px] bg-primary text-white flex flex-col z-50">
-  <div class="p-lg flex items-center gap-xs">
-    <span class="material-symbols-outlined text-secondary-container">description</span>
-    <h1 class="font-bold tracking-tight" style="font-size:20px;line-height:28px;">Application Wizard</h1>
+<aside id="sidebar-drawer" class="sidebar-drawer fixed top-0 left-0 h-full w-[280px] bg-primary text-white flex flex-col z-50 -translate-x-full md:translate-x-0 shadow-2xl md:shadow-none">
+  <div class="p-lg border-b border-white/10 flex flex-col gap-sm">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-xs">
+        <span class="material-symbols-outlined text-secondary-container">description</span>
+        <h1 class="font-bold tracking-tight text-lg md:text-xl">Application Wizard</h1>
+      </div>
+      <button id="mobile-close-btn" type="button" class="md:hidden p-1 text-on-primary-container hover:text-white">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    
+    <!-- Prominent Top Sidebar Dark Mode Toggle -->
+    <button id="theme-toggle-btn" type="button" class="w-full flex items-center justify-between p-2 px-3 bg-white/10 hover:bg-white/15 rounded-lg transition-all text-xs font-medium text-white border border-white/10">
+      <div class="flex items-center gap-2">
+        <span id="theme-icon" class="material-symbols-outlined text-base text-secondary-container">dark_mode</span>
+        <span id="theme-text">Dark Mode</span>
+      </div>
+      <span class="text-[10px] uppercase font-bold text-secondary-container px-1.5 py-0.5 bg-white/10 rounded">Toggle</span>
+    </button>
   </div>
-  <nav class="flex-1 px-md mt-lg space-y-base" id="sidebar-nav"></nav>
+  
+  <nav class="flex-1 px-md mt-md space-y-base overflow-y-auto" id="sidebar-nav"></nav>
+  
   <div class="p-md border-t border-white/10">
-    <button id="reset-btn" class="w-full flex items-center justify-center gap-xs p-sm text-on-primary-container hover:text-white hover:bg-white/5 rounded-lg transition-all" style="font-size:14px;font-weight:500;">
-      <span class="material-symbols-outlined text-sm">restart_alt</span>
+    <button id="reset-btn" type="button" class="w-full flex items-center justify-center gap-xs p-2 text-on-primary-container hover:text-white hover:bg-white/10 rounded-lg transition-all text-xs font-medium">
+      <span class="material-symbols-outlined text-base">restart_alt</span>
       Start Over
     </button>
   </div>
 </aside>
 
 <!-- ═══════════════════════ MAIN ═══════════════════════ -->
-<main class="ml-[280px] flex-1 flex flex-col min-h-screen relative">
-  <div class="flex-1 w-full max-w-[800px] mx-auto px-container-padding py-[80px]">
+<main class="ml-0 md:ml-[280px] flex-1 flex flex-col min-h-screen relative pt-16 md:pt-0">
+  <div class="flex-1 w-full max-w-[800px] mx-auto px-4 sm:px-6 md:px-container-padding py-6 md:py-[60px]">
 
     <!-- ── STEP 1: Personal Info ── -->
     <section class="active-step step-fade" id="step-1">
-      <div class="bg-surface-container-lowest p-xl rounded-xl shadow-sm border border-outline-variant">
-        <h2 class="text-headline-lg mb-sm text-primary">Personal Details</h2>
-        <p class="text-on-surface-variant mb-xl text-body-sm">Please provide your basic contact information to begin.</p>
+      <div class="bg-surface-container-lowest p-5 sm:p-xl rounded-xl shadow-sm border border-outline-variant">
+        
+        <!-- RESUME AUTO-FILL BANNER -->
+        <div id="resume-upload-box" class="mb-6 p-4 sm:p-5 bg-secondary-container/20 border-2 border-dashed border-secondary/40 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4 transition-all hover:border-secondary">
+          <div class="flex items-center gap-3 text-left">
+            <div class="w-12 h-12 rounded-full bg-secondary text-white flex items-center justify-center shrink-0">
+              <span class="material-symbols-outlined text-2xl">upload_file</span>
+            </div>
+            <div>
+              <h3 class="font-semibold text-primary text-sm sm:text-base">Upload Resume / CV to Auto-Fill</h3>
+              <p class="text-xs text-on-surface-variant">Upload PDF, DOCX or TXT to automatically pre-fill your info &amp; experience across all steps.</p>
+              <span id="uploaded-filename" class="text-xs font-bold text-secondary hidden mt-1 block"></span>
+            </div>
+          </div>
+          <label class="shrink-0 bg-secondary text-white px-4 py-2 rounded-lg text-xs font-semibold hover:opacity-90 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm">
+            <span class="material-symbols-outlined text-base">file_upload</span>
+            <span>Choose File</span>
+            <input id="resume-file-input" type="file" accept=".pdf,.docx,.doc,.txt" class="hidden"/>
+          </label>
+        </div>
+
+        <h2 class="text-2xl sm:text-headline-lg font-semibold mb-xs sm:mb-sm text-primary">Personal Details</h2>
+        <p class="text-on-surface-variant mb-6 text-body-sm">Please provide your basic contact information to begin.</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-md">
           <div class="flex flex-col gap-xs">
             <label class="text-label-md text-on-surface">First Name <span class="text-error">*</span></label>
@@ -113,11 +186,11 @@
         <div class="mt-md flex flex-col gap-xs">
           <label class="text-label-md text-on-surface">Professional Summary <span class="text-on-surface-variant font-normal">(Optional)</span></label>
           <div class="relative">
-            <textarea id="f-professionalSummary" rows="3" maxlength="300"
+            <textarea id="f-professionalSummary" rows="4" maxlength="500"
               placeholder="Briefly describe your professional background and career goals..."
               class="w-full p-sm bg-white border border-outline-variant rounded-lg focus:ring-2 focus:ring-secondary/10 focus:border-secondary outline-none transition-all resize-none"></textarea>
             <div class="absolute bottom-2 right-2 text-[10px] text-on-surface-variant font-mono">
-              <span id="summary-counter">0</span>/300
+              <span id="summary-counter">0</span>/500
             </div>
           </div>
         </div>
@@ -126,9 +199,9 @@
 
     <!-- ── STEP 2: Professional Experience ── -->
     <section class="hidden-step" id="step-2">
-      <div class="bg-surface-container-lowest p-xl rounded-xl shadow-sm border border-outline-variant">
-        <h2 class="text-headline-lg mb-sm text-primary">Professional Work</h2>
-        <p class="text-on-surface-variant mb-xl text-body-sm">Tell us about your most recent or relevant professional experience.</p>
+      <div class="bg-surface-container-lowest p-5 sm:p-xl rounded-xl shadow-sm border border-outline-variant">
+        <h2 class="text-2xl sm:text-headline-lg font-semibold mb-xs sm:mb-sm text-primary">Professional Work</h2>
+        <p class="text-on-surface-variant mb-6 text-body-sm">Tell us about your most recent or relevant professional experience.</p>
         <div class="space-y-lg" id="experience-entries"></div>
         <button id="add-position-btn" type="button"
           class="mt-lg w-full py-md border-2 border-dashed border-outline-variant text-on-surface-variant rounded-lg flex items-center justify-center gap-xs hover:border-secondary hover:text-secondary hover:bg-secondary/5 transition-all">
@@ -154,17 +227,20 @@
 
     <!-- ── STEP 3: Skills ── -->
     <section class="hidden-step" id="step-3">
-      <div class="bg-surface-container-lowest p-xl rounded-xl shadow-sm border border-outline-variant">
-        <h2 class="text-headline-lg mb-sm text-primary">Expertise &amp; Skills</h2>
-        <p class="text-on-surface-variant mb-xl text-body-sm">Detail your core competencies. At least one skill is required.</p>
+      <div class="bg-surface-container-lowest p-5 sm:p-xl rounded-xl shadow-sm border border-outline-variant">
+        <h2 class="text-2xl sm:text-headline-lg font-semibold mb-xs sm:mb-sm text-primary">Expertise &amp; Skills</h2>
+        <p class="text-on-surface-variant mb-6 text-body-sm">Detail your core competencies. At least one skill is required.</p>
         <div class="space-y-lg">
           <div class="flex flex-col gap-xs">
             <label class="text-label-md text-on-surface">Search &amp; Add Skills</label>
             <div class="relative">
               <span class="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
-              <input id="skill-search-input" type="text"
-                placeholder="Type a skill and press Enter (e.g. React, SQL, Python...)"
+              <input id="skill-search-input" type="text" autocomplete="off"
+                placeholder="Search skill or type custom (e.g. React, SQL, Python...)"
                 class="w-full pl-[44px] pr-sm py-sm bg-white border border-outline-variant rounded-lg focus:ring-2 focus:ring-secondary/10 focus:border-secondary outline-none transition-all"/>
+              
+              <!-- Autocomplete Suggestions Dropdown -->
+              <div id="skill-suggestions-dropdown" class="absolute left-0 right-0 top-full mt-1 bg-white border border-outline-variant rounded-lg shadow-xl z-30 max-h-48 overflow-y-auto hidden"></div>
             </div>
             <div class="flex flex-wrap gap-xs mt-sm" id="selected-skills-tags"></div>
             <span class="text-error text-[12px] hidden" id="skill-error">Please add at least one skill.</span>
@@ -184,9 +260,9 @@
 
     <!-- ── STEP 4: Review ── -->
     <section class="hidden-step" id="step-4">
-      <div class="bg-surface-container-lowest p-xl rounded-xl shadow-sm border border-outline-variant">
+      <div class="bg-surface-container-lowest p-5 sm:p-xl rounded-xl shadow-sm border border-outline-variant">
         <header class="mb-xl">
-          <h2 class="text-headline-lg text-primary mb-xs">Review Application</h2>
+          <h2 class="text-2xl sm:text-headline-lg font-semibold text-primary mb-xs">Review Application</h2>
           <p class="text-body-sm text-on-surface-variant">Please verify all information before finalizing your application.</p>
         </header>
         <div class="space-y-xl" id="review-content"></div>
@@ -206,38 +282,94 @@
   </div>
 
   <!-- ── Bottom Nav ── -->
-  <nav class="sticky bottom-0 w-full bg-surface-container-low/80 backdrop-blur-sm border-t border-outline-variant z-40">
-    <div class="max-w-[800px] mx-auto px-container-padding py-md flex justify-between items-center">
+  <nav class="sticky bottom-0 w-full bg-surface-container-low/90 backdrop-blur-md border-t border-outline-variant z-30">
+    <div class="max-w-[800px] mx-auto px-4 sm:px-6 md:px-container-padding py-3 sm:py-md flex justify-between items-center">
       <button id="prev-btn"
-        class="flex flex-row items-center gap-xs border border-primary text-primary rounded-full px-lg py-sm hover:bg-primary hover:text-white active:scale-95 transition-all invisible">
-        <span class="material-symbols-outlined">arrow_back</span>
+        class="flex flex-row items-center gap-xs border border-primary text-primary rounded-full px-4 sm:px-lg py-2 sm:py-sm hover:bg-primary hover:text-white active:scale-95 transition-all invisible text-sm font-medium">
+        <span class="material-symbols-outlined text-lg sm:text-xl">arrow_back</span>
         <span class="text-label-md">Back</span>
       </button>
-      <div id="progress-indicator" class="hidden flex-col items-center">
-        <div class="w-48 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
-          <div id="progress-bar" class="h-full bg-secondary transition-all duration-500" style="width:0%"></div>
+      
+      <!-- Always-Visible Progress Indicator with Percentage -->
+      <div id="progress-indicator" class="flex flex-col items-center">
+        <div class="w-28 sm:w-44 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+          <div id="progress-bar" class="h-full bg-secondary transition-all duration-500" style="width:25%"></div>
         </div>
-        <span id="progress-label" class="text-[10px] text-on-surface-variant font-bold uppercase mt-xs tracking-wider">Step 1 of 4</span>
+        <span id="progress-label" class="text-[10px] text-on-surface-variant font-bold uppercase mt-xs tracking-wider">Step 1 of 4 (25%)</span>
       </div>
+
       <button id="next-btn"
-        class="flex flex-row items-center gap-xs bg-secondary text-white rounded-full px-lg py-sm hover:opacity-90 active:scale-95 transition-all shadow-md">
+        class="flex flex-row items-center gap-xs bg-secondary text-white rounded-full px-5 sm:px-lg py-2 sm:py-sm hover:opacity-90 active:scale-95 transition-all shadow-md text-sm font-medium">
         <span class="text-label-md" id="next-btn-text">Next</span>
-        <span class="material-symbols-outlined" id="next-btn-icon">arrow_forward</span>
+        <span class="material-symbols-outlined text-lg sm:text-xl" id="next-btn-icon">arrow_forward</span>
       </button>
     </div>
   </nav>
 </main>
 
+<!-- ═══════════════════════ WELCOME CHOICE MODAL ═══════════════════════ -->
+<div id="welcome-modal" class="fixed inset-0 z-[70] bg-primary/70 backdrop-blur-md flex items-center justify-center p-4">
+  <div class="bg-surface-container-lowest p-6 sm:p-8 rounded-2xl shadow-2xl max-w-lg w-full text-center space-y-6 border border-outline-variant">
+    
+    <div class="w-16 h-16 bg-secondary-container text-secondary rounded-full flex items-center justify-center mx-auto shadow-sm">
+      <span class="material-symbols-outlined text-3xl">corporate_fare</span>
+    </div>
+
+    <div>
+      <span class="text-xs font-bold text-secondary uppercase tracking-widest">Apex Consulting Group</span>
+      <h2 class="text-2xl font-bold text-primary mt-1">Welcome to Job Application</h2>
+      <p class="text-sm text-on-surface-variant mt-2">How would you like to complete your application today?</p>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+      <!-- Option A: Upload Resume -->
+      <label class="p-5 border-2 border-dashed border-secondary/40 rounded-xl hover:border-secondary hover:bg-secondary/5 transition-all cursor-pointer flex flex-col items-center justify-center text-center space-y-3 group">
+        <div class="w-12 h-12 rounded-full bg-secondary/10 text-secondary flex items-center justify-center group-hover:scale-110 transition-transform">
+          <span class="material-symbols-outlined text-2xl">upload_file</span>
+        </div>
+        <div>
+          <h4 class="font-bold text-primary text-sm">Upload Resume</h4>
+          <p class="text-[11px] text-on-surface-variant leading-tight mt-1">Auto-fill your details &amp; review each step</p>
+        </div>
+        <input id="welcome-resume-file" type="file" accept=".pdf,.docx,.doc,.txt" class="hidden"/>
+      </label>
+
+      <!-- Option B: Manual Entry -->
+      <button type="button" onclick="startManualApplication()"
+        class="p-5 border-2 border-outline-variant rounded-xl hover:border-primary hover:bg-primary/5 transition-all cursor-pointer flex flex-col items-center justify-center text-center space-y-3 group">
+        <div class="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center group-hover:scale-110 transition-transform">
+          <span class="material-symbols-outlined text-2xl">edit_note</span>
+        </div>
+        <div>
+          <h4 class="font-bold text-primary text-sm">Fill Manually</h4>
+          <p class="text-[11px] text-on-surface-variant leading-tight mt-1">Enter your details step-by-step manually</p>
+        </div>
+      </button>
+    </div>
+
+  </div>
+</div>
+
 <!-- ═══════════════════════ SUCCESS MODAL ═══════════════════════ -->
-<div id="success-modal" class="fixed inset-0 z-[60] bg-primary/40 backdrop-blur-sm flex items-center justify-center p-md hidden">
-  <div id="modal-content" class="bg-surface-container-lowest p-xl rounded-xl shadow-xl max-w-sm w-full text-center scale-95 opacity-0 transition-all duration-300">
+<div id="success-modal" class="fixed inset-0 z-[60] bg-primary/50 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+  <div id="modal-content" class="bg-surface-container-lowest p-6 sm:p-xl rounded-xl shadow-xl max-w-md w-full text-center scale-95 opacity-0 transition-all duration-300">
     <div class="w-16 h-16 bg-secondary-container text-secondary rounded-full flex items-center justify-center mx-auto mb-md">
       <span class="material-symbols-outlined text-[32px]">check_circle</span>
     </div>
-    <h3 class="text-headline-md text-primary mb-xs">Application Sent!</h3>
-    <p class="text-body-sm text-on-surface-variant mb-lg">Your documents have been encrypted and delivered to the HR portal. Check your email for a confirmation.</p>
+    <h3 class="text-headline-md text-primary mb-xs font-semibold">Application Sent!</h3>
+    <p id="modal-msg" class="text-body-sm text-on-surface-variant mb-6 leading-relaxed">
+      Your application has been successfully submitted.
+    </p>
+
+    <!-- Download Application JSON Button -->
+    <button id="download-app-btn" type="button" onclick="downloadApplicationSummary()"
+      class="w-full bg-secondary text-white text-sm py-2.5 rounded-lg hover:opacity-90 transition-colors font-medium flex items-center justify-center gap-2 mb-3 shadow-sm cursor-pointer">
+      <span class="material-symbols-outlined text-lg">download</span>
+      Download Copy (.json)
+    </button>
+
     <button onclick="handleModalClose()"
-      class="w-full bg-primary text-white text-label-md py-sm rounded-lg hover:bg-primary-container transition-colors">
+      class="w-full bg-primary text-white text-sm py-2.5 rounded-lg hover:bg-primary-container transition-colors font-medium cursor-pointer">
       Submit Another Application
     </button>
   </div>
@@ -246,4 +378,3 @@
 <script src="app.js"></script>
 </body>
 </html>
-
