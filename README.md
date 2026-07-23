@@ -49,8 +49,8 @@ A modern, responsive multi-step job application form featuring smart resume PDF 
 - Submits completed applications to the candidate's email via FormSubmit endpoint
 - Personalized confirmation notification with spam folder reminders
 
-### 📥 8. Download Summary (.JSON)
-- Export a clean structured JSON file of the application summary upon completion
+### 📥 8. Download Summary (.PDF)
+- Export a clean, beautifully formatted PDF document of the application summary upon completion
 
 ---
 

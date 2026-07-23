@@ -1189,34 +1189,124 @@ function handleReset() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// DOWNLOAD APPLICATION COPY (.JSON)
+// DOWNLOAD APPLICATION PDF (.PDF)
 // ══════════════════════════════════════════════════════════════
 function downloadApplicationSummary() {
-  const exportData = {
-    applicationTitle: 'Job Application — Apex Consulting Group',
-    exportedAt: new Date().toLocaleString(),
-    applicantDetails: {
-      fullName: `${formState.data.firstName} ${formState.data.lastName}`.trim(),
-      email: formState.data.email,
-      phone: formState.data.phone,
-      linkedin: formState.data.linkedin || 'Not provided',
-      preferredContact: formState.data.preferredContact,
-      address: formState.data.address || 'Not provided',
-      professionalSummary: formState.data.professionalSummary || 'None'
-    },
-    workExperience: formState.data.experiences,
-    skillsAndExpertise: formState.data.skills
-  };
+  const d = formState.data;
+  const fullName = `${d.firstName || ''} ${d.lastName || ''}`.trim() || 'Candidate';
+  const fileName = `job_application_${(d.lastName || 'candidate').toLowerCase()}_${Date.now()}.pdf`;
 
-  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `job_application_${(formState.data.lastName || 'summary').toLowerCase()}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // Build Experience HTML
+  const experiencesHTML = (d.experiences && d.experiences.length) ? d.experiences.map(exp => `
+    <div style="margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px dashed #e7e8ea;">
+      <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 13px; color: #031634;">
+        <span>${esc(exp.title || 'Role')} — <span style="color: #13696a;">${esc(exp.company || 'Company')}</span></span>
+        <span style="font-size: 11px; color: #75777e; font-weight: normal;">${esc(exp.start_date || 'N/A')} to ${exp.is_current ? 'Present' : esc(exp.end_date || 'N/A')}</span>
+      </div>
+      ${exp.location ? `<p style="font-size: 11px; color: #75777e; margin: 2px 0 4px 0;">📍 ${esc(exp.location)}</p>` : ''}
+      ${exp.description ? `<p style="font-size: 11px; color: #44474e; margin: 4px 0 0 0; line-height: 1.4;">${esc(exp.description)}</p>` : ''}
+    </div>
+  `).join('') : '<p style="font-size: 11px; color: #75777e;">No experience listed.</p>';
+
+  // Build Skills HTML
+  const validSkills = (d.skills || []).filter(s => s.name);
+  const skillsHTML = validSkills.length ? `
+    <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+      ${validSkills.map(s => `
+        <span style="background: #f2f4f6; color: #031634; border: 1px solid #c5c6cf; padding: 4px 8px; border-radius: 12px; font-size: 10px; font-weight: 500;">
+          <strong>${esc(s.name)}</strong> (${esc(s.proficiency || 'intermediate')}${s.yearsUsed ? ' · ' + s.yearsUsed + ' yrs' : ''})
+        </span>
+      `).join('')}
+    </div>
+  ` : '<p style="font-size: 11px; color: #75777e;">No skills listed.</p>';
+
+  // Container element for PDF rendering
+  const pdfContainer = document.createElement('div');
+  pdfContainer.style.width = '700px';
+  pdfContainer.style.padding = '25px 30px';
+  pdfContainer.style.background = '#ffffff';
+  pdfContainer.style.color = '#191c1e';
+  pdfContainer.style.fontFamily = 'Helvetica, Arial, sans-serif';
+
+  pdfContainer.innerHTML = `
+    <!-- Header -->
+    <div style="border-bottom: 2px solid #13696a; padding-bottom: 12px; margin-bottom: 18px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+        <div>
+          <h1 style="font-size: 20px; color: #031634; margin: 0; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">Apex Consulting Group</h1>
+          <p style="font-size: 12px; color: #13696a; margin: 2px 0 0 0; font-weight: bold;">OFFICIAL CANDIDATE APPLICATION RECORD</p>
+        </div>
+        <div style="text-align: right;">
+          <span style="font-size: 10px; color: #75777e; display: block;">Submission Date: ${new Date().toLocaleDateString()}</span>
+          <span style="font-size: 10px; color: #13696a; font-weight: bold; display: block;">Status: Verified Submitted</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Personal Information -->
+    <div style="margin-bottom: 20px;">
+      <h2 style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #13696a; border-bottom: 1px solid #c5c6cf; padding-bottom: 4px; margin-bottom: 10px; font-weight: bold;">1. Candidate Information</h2>
+      <table style="width: 100%; font-size: 11px; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 4px 0; width: 50%;"><strong>Full Name:</strong> ${esc(fullName)}</td>
+          <td style="padding: 4px 0; width: 50%;"><strong>Email:</strong> ${esc(d.email || '—')}</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 0;"><strong>Phone:</strong> ${esc(d.phone || '—')}</td>
+          <td style="padding: 4px 0;"><strong>LinkedIn:</strong> ${esc(d.linkedin || 'Not provided')}</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 0;"><strong>Address:</strong> ${esc(d.address || 'Not provided')}</td>
+          <td style="padding: 4px 0;"><strong>Preferred Contact:</strong> ${esc(d.preferredContact || 'Email')}</td>
+        </tr>
+      </table>
+      ${d.professionalSummary ? `
+        <div style="margin-top: 10px; background: #f8f9fb; padding: 8px 10px; border-radius: 4px; border-left: 3px solid #13696a;">
+          <strong style="font-size: 10px; text-transform: uppercase; color: #44474e;">Professional Summary:</strong>
+          <p style="font-size: 11px; margin: 3px 0 0 0; color: #191c1e; line-height: 1.4;">${esc(d.professionalSummary)}</p>
+        </div>
+      ` : ''}
+    </div>
+
+    <!-- Work Experience -->
+    <div style="margin-bottom: 20px;">
+      <h2 style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #13696a; border-bottom: 1px solid #c5c6cf; padding-bottom: 4px; margin-bottom: 10px; font-weight: bold;">2. Professional Work Experience</h2>
+      ${experiencesHTML}
+    </div>
+
+    <!-- Skills & Expertise -->
+    <div style="margin-bottom: 20px;">
+      <h2 style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #13696a; border-bottom: 1px solid #c5c6cf; padding-bottom: 4px; margin-bottom: 10px; font-weight: bold;">3. Technical Skills & Expertise</h2>
+      ${skillsHTML}
+    </div>
+
+    <!-- Footer -->
+    <div style="margin-top: 30px; pt: 10px; border-top: 1px solid #edeef0; text-align: center; font-size: 9px; color: #75777e;">
+      Apex Consulting Group • Confidential Candidate Application Copy • Generated Automatically
+    </div>
+  `;
+
+  // Use html2pdf if available, otherwise open print dialog window
+  if (window.html2pdf) {
+    const opt = {
+      margin:       [0.4, 0.4, 0.4, 0.4],
+      filename:     fileName,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true },
+      jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+    };
+    html2pdf().set(opt).from(pdfContainer).save();
+    showAutosaveToast('Downloading PDF application copy...');
+  } else {
+    // Print window fallback
+    const printWin = window.open('', '_blank');
+    if (printWin) {
+      printWin.document.write(`<html><head><title>Job Application — ${fullName}</title></head><body>${pdfContainer.outerHTML}</body></html>`);
+      printWin.document.close();
+      printWin.focus();
+      setTimeout(() => printWin.print(), 250);
+    }
+  }
 }
 
 window.downloadApplicationSummary = downloadApplicationSummary;

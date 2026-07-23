@@ -7,6 +7,7 @@
   <title>Job Application Wizard | Apex Consulting Group</title>
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
   <script id="tailwind-config">
@@ -361,11 +362,11 @@
       Your application has been successfully submitted.
     </p>
 
-    <!-- Download Application JSON Button -->
+    <!-- Download Application PDF Button -->
     <button id="download-app-btn" type="button" onclick="downloadApplicationSummary()"
       class="w-full bg-secondary text-white text-sm py-2.5 rounded-lg hover:opacity-90 transition-colors font-medium flex items-center justify-center gap-2 mb-3 shadow-sm cursor-pointer">
-      <span class="material-symbols-outlined text-lg">download</span>
-      Download Copy (.json)
+      <span class="material-symbols-outlined text-lg">picture_as_pdf</span>
+      Download Application (.pdf)
     </button>
 
     <button onclick="handleModalClose()"
