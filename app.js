@@ -5,15 +5,21 @@ const STORAGE_KEY = 'stitchWizardState_v2';
 const THEME_KEY = 'stitch_theme_mode';
 
 const PREDEFINED_SKILLS = [
-  'React', 'React.js', 'React Native', 'Vue.js', 'Angular', 'Next.js',
-  'JavaScript', 'TypeScript', 'Node.js', 'Python', 'Java', 'C++', 'C#',
-  'Go', 'Rust', 'PHP', 'HTML/CSS', 'Tailwind CSS', 'SQL', 'PostgreSQL',
-  'MongoDB', 'Redis', 'GraphQL', 'REST API', 'Docker', 'Kubernetes',
-  'AWS', 'Azure', 'GCP', 'Financial Analysis', 'Project Management',
-  'Data Analysis', 'Tableau', 'Power BI', 'Excel', 'Risk Management',
-  'Corporate Finance', 'Strategic Planning', 'Accounting', 'Business Intelligence',
-  'Figma', 'UI/UX Design', 'Git', 'CI/CD', 'Agile/Scrum', 'Leadership',
-  'Communication', 'Problem Solving', 'Customer Analytics'
+  'React', 'React.js', 'React Native', 'Vue.js', 'Angular', 'Next.js', 'Nuxt.js', 'Svelte',
+  'JavaScript', 'TypeScript', 'Node.js', 'Express.js', 'Express', 'NestJS', 'Python', 'Django', 'Flask', 'FastAPI',
+  'Java', 'Spring Boot', 'C', 'C++', 'C#', '.NET', 'Go', 'Golang', 'Rust', 'PHP', 'Laravel', 'Ruby', 'Ruby on Rails',
+  'HTML', 'CSS', 'HTML/CSS', 'Tailwind CSS', 'Bootstrap', 'Sass', 'LESS',
+  'SQL', 'MySQL', 'PostgreSQL', 'SQLite', 'MongoDB', 'Redis', 'Cassandra', 'Oracle', 'Firebase', 'DynamoDB',
+  'GraphQL', 'REST API', 'RESTful APIs', 'Microservices', 'WebSockets',
+  'Docker', 'Kubernetes', 'AWS', 'Azure', 'GCP', 'DevOps', 'CI/CD', 'Jenkins', 'GitHub Actions', 'Terraform', 'Ansible',
+  'Git', 'GitHub', 'GitLab', 'Bitbucket', 'Linux', 'Unix', 'Bash', 'Shell Scripting', 'Nginx', 'Apache',
+  'Jest', 'Cypress', 'Selenium', 'Postman', 'JUnit', 'PyTest',
+  'Data Structures', 'Algorithms', 'OOP', 'System Design', 'Data Analysis', 'Pandas', 'NumPy', 'Scikit-learn', 'TensorFlow', 'PyTorch',
+  'Tableau', 'Power BI', 'Excel', 'Business Intelligence',
+  'Figma', 'UI/UX Design', 'Adobe XD', 'Photoshop',
+  'Financial Analysis', 'Project Management', 'Agile/Scrum', 'Scrum', 'Kanban', 'Jira',
+  'Risk Management', 'Corporate Finance', 'Strategic Planning', 'Accounting',
+  'Leadership', 'Communication', 'Problem Solving', 'Teamwork', 'Customer Analytics'
 ];
 
 function defaultState() {
@@ -196,18 +202,50 @@ function parseResumeText(rawText, fileName) {
     }
   }
 
-  // 5. Extract Skills
+  // 5. Extract Skills (Comprehensive Dictionary + Dynamic Section Extraction)
   const foundSkills = [];
+  const addedSkillNames = new Set();
+
+  // A. Check against expanded PREDEFINED_SKILLS dictionary
   PREDEFINED_SKILLS.forEach(skill => {
-    const regex = new RegExp('\\b' + skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+    const escaped = skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp('(?:^|[^a-zA-Z0-9+#.#-])' + escaped + '(?:$|[^a-zA-Z0-9+#.#-])', 'i');
     if (regex.test(cleanText)) {
-      foundSkills.push({
-        name: skill,
-        proficiency: 'advanced',
-        yearsUsed: '3'
-      });
+      const lowerName = skill.toLowerCase();
+      if (!addedSkillNames.has(lowerName)) {
+        addedSkillNames.add(lowerName);
+        foundSkills.push({
+          name: skill,
+          proficiency: 'advanced',
+          yearsUsed: '3'
+        });
+      }
     }
   });
+
+  // B. Extract custom skills from explicit "Skills:" / "Technical Skills:" section in resume text
+  const skillsSectionMatch = cleanText.match(/(?:technical\s+skills|skills|key\s+competencies|technologies|expertise|tools)[:\-\s]+([\s\S]{10,400})/i);
+  if (skillsSectionMatch && skillsSectionMatch[1]) {
+    const sectionText = skillsSectionMatch[1]
+      .split(/(?:experience|education|projects|summary|profile|work|employment)/i)[0]; // stop at next section header
+    
+    // Split by commas, bullets, pipes, or slashes
+    const rawTokens = sectionText.split(/[,•|;\r\n\/]/);
+    rawTokens.forEach(token => {
+      const cleaned = token.replace(/[^a-zA-Z0-9\s.+#-]/g, '').trim();
+      if (cleaned.length >= 2 && cleaned.length <= 30 && !/^(and|or|in|with|using|skills|technical|tools|programming|languages|frameworks|databases)$/i.test(cleaned)) {
+        const lowerName = cleaned.toLowerCase();
+        if (!addedSkillNames.has(lowerName)) {
+          addedSkillNames.add(lowerName);
+          foundSkills.push({
+            name: cleaned,
+            proficiency: 'advanced',
+            yearsUsed: '3'
+          });
+        }
+      }
+    });
+  }
 
   // 6. Extract Professional Summary — stops at next section heading
   let summary = '';
