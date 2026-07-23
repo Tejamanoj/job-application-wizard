@@ -641,7 +641,35 @@ function bindStep1Inputs() {
       clearInputError(el);
     });
   });
+
+  // Real-time email format check on blur (when user leaves the field)
+  const emailEl = document.getElementById('f-email');
+  if (emailEl) {
+    emailEl.addEventListener('blur', () => {
+      const val = emailEl.value.trim();
+      const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+      if (val && !emailRegex.test(val)) {
+        markError('f-email');
+      } else {
+        clearInputError(emailEl);
+      }
+    });
+  }
+
+  // Real-time phone format check on blur
+  const phoneEl = document.getElementById('f-phone');
+  if (phoneEl) {
+    phoneEl.addEventListener('blur', () => {
+      const val = phoneEl.value.trim();
+      if (val && !/^\d{10}$/.test(val)) {
+        markError('f-phone');
+      } else {
+        clearInputError(phoneEl);
+      }
+    });
+  }
 }
+
 
 // ══════════════════════════════════════════════════════════════
 // STEP 2 — EXPERIENCE
@@ -1229,7 +1257,9 @@ function validateStep(step) {
   if (step === 1) {
     if (!formState.data.firstName || !formState.data.firstName.trim()) { markError('f-firstName'); valid = false; }
     if (!formState.data.lastName || !formState.data.lastName.trim()) { markError('f-lastName'); valid = false; }
-    if (!formState.data.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formState.data.email)) { markError('f-email'); valid = false; }
+    // Strict email validation: must have local@domain.tld format with valid characters
+    const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+    if (!formState.data.email || !emailRegex.test(formState.data.email.trim())) { markError('f-email'); valid = false; }
     if (!formState.data.phone || !/^\d{10}$/.test(formState.data.phone)) { markError('f-phone'); valid = false; }
   } else if (step === 2) {
     const hasValid = formState.data.experiences.some(e => e.company && e.company.trim() && e.title && e.title.trim());
