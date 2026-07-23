@@ -171,14 +171,11 @@ function parseResumeText(rawText, fileName) {
   const linkedinMatch = cleanText.match(/(https?:\/\/)?(www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+/i);
   const linkedin = linkedinMatch ? linkedinMatch[0] : '';
 
-  // 4. Extract Name
+  // 4. Extract Name — try to find it near email or at the top of the resume
   let firstName = '';
   let lastName = '';
-  
-  if (cleanText.toLowerCase().includes('amara') || cleanText.toLowerCase().includes('teja')) {
-    firstName = 'Amara Teja';
-    lastName = 'Manoj Kumar R';
-  } else if (email && cleanText.includes(email)) {
+
+  if (email && cleanText.includes(email)) {
     const beforeEmail = cleanText.split(email)[0].trim();
     const nameWords = beforeEmail.split(/\s+/).filter(w => /^[A-Za-z]+$/.test(w) && !/resume|curriculum|vitae/i.test(w));
     if (nameWords.length >= 2) {
@@ -291,31 +288,26 @@ function parseResumeText(rawText, fileName) {
   }
 
   return {
-    firstName: firstName || 'Amara Teja',
-    lastName: lastName || 'Manoj Kumar R',
-    email: email || 'tejamanojkumaramara@gmail.com',
-    phone: phone || '8712346159',
-    linkedin: linkedin || 'linkedin.com/in/amara-teja-manoj-kumar',
+    firstName: firstName || '',
+    lastName: lastName || '',
+    email: email || '',
+    phone: phone || '',
+    linkedin: linkedin || '',
     preferredContact: 'email',
-    address: 'Hyderabad, India',
+    address: '',
     // professionalSummary intentionally omitted — user fills this manually
     experiences: [
       {
         company: companyName,
         title: jobTitle,
-        location: 'Hyderabad, India',
-        start_date: '2023-01-01',
+        location: '',
+        start_date: '',
         end_date: '',
-        is_current: true,
+        is_current: false,
         description: description
       }
     ],
-    skills: foundSkills.length ? foundSkills : [
-      { name: 'React.js', proficiency: 'advanced', yearsUsed: '3' },
-      { name: 'JavaScript', proficiency: 'expert', yearsUsed: '4' },
-      { name: 'Python', proficiency: 'intermediate', yearsUsed: '2' },
-      { name: 'SQL', proficiency: 'intermediate', yearsUsed: '2' }
-    ]
+    skills: foundSkills
   };
 }
 
