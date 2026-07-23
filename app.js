@@ -60,32 +60,22 @@ function unlockBodyScroll() {
   document.body.classList.remove('overflow-hidden');
 }
 
-// Memory-only flag — lives only while this tab is open, never persisted
-let _tabAlive = false;
-
 function loadState() {
-  // Clear any stale data from localStorage left by previous versions
+  // Clear any stale localStorage data from old versions
   try { window.localStorage.removeItem(STORAGE_KEY); } catch(e) {}
 
   const welcomeModal = document.getElementById('welcome-modal');
-
-  // Detect if this is a page refresh (F5) vs a fresh tab open
-  // performance.navigation.type: 1 = reload, 0 = navigate (fresh)
-  const navEntry = performance.getEntriesByType('navigation')[0];
-  const isReload = navEntry ? navEntry.type === 'reload' : (performance.navigation && performance.navigation.type === 1);
-
-  // Only restore saved data if it's a refresh AND the tab was already alive
-  // _tabAlive is a memory variable — it resets to false when tab closes
   const saved = sessionStorage.getItem(STORAGE_KEY);
 
-  if (isReload && _tabAlive && saved) {
-    // F5 refresh within the same tab session — restore data
+  if (saved) {
+    // Restore data — sessionStorage persists on F5 refresh but clears on tab close
     try {
       const parsed = JSON.parse(saved);
       formState = parsed;
       if (!formState.data.experiences || !formState.data.experiences.length) {
         formState.data.experiences = [{ company: '', title: '', location: '', start_date: '', end_date: '', is_current: false, description: '' }];
       }
+      // Hide welcome modal if user already has data from this session
       if (welcomeModal && (formState.data.firstName || formState.data.email || formState.data.experiences[0].company)) {
         welcomeModal.classList.add('hidden');
         unlockBodyScroll();
@@ -98,14 +88,10 @@ function loadState() {
       if (welcomeModal) lockBodyScroll();
     }
   } else {
-    // Fresh tab open or tab was closed and reopened — wipe everything and start fresh
+    // No saved data — fresh start
     formState = defaultState();
-    try { sessionStorage.removeItem(STORAGE_KEY); } catch(e) {}
     if (welcomeModal) lockBodyScroll();
   }
-
-  // Mark this tab as alive in memory (not in storage)
-  _tabAlive = true;
 }
 
 
